@@ -7,6 +7,7 @@ Language Features:
 
 
 Compiler Features:
+ * Code Generator: Transient storage value type state variables are now supported by the legacy pipeline.
  * Commandline Interface: Add ``--transient-storage-layout`` output.
  * Commandline Interface: Allow the use of ``--asm-json`` output option in assembler mode to export EVM assembly of the contracts in JSON format.
  * Commandline Interface: Do not perform IR optimization when only unoptimized IR is requested.

@@ -20,7 +20,9 @@
 */
 #pragma once
 
+#include <libyul/backends/evm/ControlFlow.h>
 #include <libyul/ControlFlowSideEffects.h>
+#include <libyul/ControlFlowSideEffectsCollector.h>
 #include <libyul/backends/evm/SSAControlFlowGraph.h>
 #include <stack>
 
@@ -38,7 +40,21 @@ class SSAControlFlowGraphBuilder
 public:
 	SSAControlFlowGraphBuilder(SSAControlFlowGraphBuilder const&) = delete;
 	SSAControlFlowGraphBuilder& operator=(SSAControlFlowGraphBuilder const&) = delete;
-	static std::unique_ptr<SSACFG> build(AsmAnalysisInfo const& _analysisInfo, Dialect const& _dialect, Block const& _block);
+	static std::unique_ptr<ControlFlow> build(AsmAnalysisInfo const& _analysisInfo, Dialect const& _dialect, Block const& _block);
+	static void buildFunctionGraphs(
+		ControlFlow& _controlFlow,
+		AsmAnalysisInfo const& _info,
+		ControlFlowSideEffectsCollector const& _sideEffects,
+		Dialect const& _dialect,
+		std::vector<std::tuple<Scope::Function const*, FunctionDefinition const*>> _functions
+	);
+	static std::vector<std::tuple<Scope::Function const*, FunctionDefinition const*>> buildMainGraph(
+		SSACFG& _cfg,
+		AsmAnalysisInfo const& _analysisInfo,
+		ControlFlowSideEffectsCollector const& _sideEffects,
+		Dialect const& _dialect,
+		Block const& _block
+	);
 
 	void operator()(ExpressionStatement const& _statement);
 	void operator()(Assignment const& _assignment);
@@ -60,8 +76,6 @@ public:
 
 private:
 	void assign(std::vector<std::reference_wrapper<Scope::Variable const>> _variables, Expression const* _expression);
-
-	void registerFunction(FunctionDefinition const& _function);
 	std::vector<SSACFG::ValueId> visitFunctionCall(FunctionCall const& _call);
 
 	SSACFG::ValueId zero();
@@ -105,7 +119,6 @@ private:
 		SSACFG::BlockId continueBlock;
 	};
 	std::stack<ForLoopInfo> m_forLoopInfo;
-	SSACFG::FunctionInfo* m_currentFunction = nullptr;
 
 	std::optional<SSACFG::ValueId>& currentDef(Scope::Variable const& _variable, SSACFG::BlockId _block)
 	{
@@ -131,6 +144,8 @@ private:
 		std::map<u256, SSACFG::BlockId> _cases,
 		SSACFG::BlockId _defaultCase
 	);
+
+	std::vector<std::tuple<Scope::Function const*, FunctionDefinition const*>> m_functionDefinitions;
 };
 
 }

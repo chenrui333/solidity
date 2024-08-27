@@ -29,10 +29,10 @@
 
 #include <libsolutil/Numeric.h>
 
+#include <range/v3/view/map.hpp>
 #include <deque>
 #include <functional>
 #include <list>
-#include <range/v3/view/map.hpp>
 #include <vector>
 
 namespace solidity::yul
@@ -41,7 +41,7 @@ namespace solidity::yul
 class SSACFG
 {
 public:
-	SSACFG() {}
+	SSACFG() = default;
 	SSACFG(SSACFG const&) = delete;
 	SSACFG(SSACFG&&) = delete;
 	SSACFG& operator=(SSACFG const&) = delete;
@@ -63,6 +63,7 @@ public:
 		bool operator==(ValueId const& _rhs) const { return value == _rhs.value; }
 		bool operator!=(ValueId const& _rhs) const { return value != _rhs.value; }
 	};
+
 	struct BuiltinCall
 	{
 		langutil::DebugData::ConstPtr debugData;
@@ -152,7 +153,7 @@ public:
 	};
 	struct VariableValue {
 		langutil::DebugData::ConstPtr debugData;
-		SSACFG::BlockId definingBlock;
+		BlockId definingBlock;
 	};
 	struct PhiValue {
 		langutil::DebugData::ConstPtr debugData;
@@ -161,27 +162,27 @@ public:
 	};
 	struct UnreachableValue {};
 	using ValueInfo = std::variant<UnreachableValue, VariableValue, LiteralValue, PhiValue>;
-	ValueInfo& valueInfo(SSACFG::ValueId _var)
+	ValueInfo& valueInfo(ValueId _var)
 	{
 		yulAssert(_var.value < m_valueInfos.size());
 		return m_valueInfos.at(_var.value);
 	}
-	ValueInfo const& valueInfo(SSACFG::ValueId _var) const
+	ValueInfo const& valueInfo(ValueId _var) const
 	{
 		yulAssert(_var.value < m_valueInfos.size());
 		return m_valueInfos.at(_var.value);
 	}
-	ValueId newPhi(SSACFG::BlockId _definingBlock)
+	ValueId newPhi(BlockId _definingBlock)
 	{
-		SSACFG::ValueId id { m_valueInfos.size() };
-		auto block = m_blocks.at(_definingBlock);
+		ValueId id { m_valueInfos.size() };
+		auto block = m_blocks.at(_definingBlock.value);
 		m_valueInfos.emplace_back(PhiValue{debugDataOf(block), _definingBlock, {}});
 		return id;
 	}
-	ValueId newVariable(SSACFG::BlockId _definingBlock)
+	ValueId newVariable(BlockId _definingBlock)
 	{
-		SSACFG::ValueId id { m_valueInfos.size() };
-		auto block = m_blocks.at(_definingBlock);
+		ValueId id { m_valueInfos.size() };
+		auto block = m_blocks.at(_definingBlock.value);
 		m_valueInfos.emplace_back(VariableValue{debugDataOf(block), _definingBlock});
 		return id;
 	}
@@ -189,14 +190,14 @@ public:
 	{
 		if (!m_unreachableValue)
 		{
-			m_unreachableValue = SSACFG::ValueId { m_valueInfos.size() };
+			m_unreachableValue = ValueId { m_valueInfos.size() };
 			m_valueInfos.emplace_back(UnreachableValue{});
 		}
 		return *m_unreachableValue;
 	}
 	ValueId newLiteral(langutil::DebugData::ConstPtr _debugData, u256 _value)
 	{
-		auto [it, inserted] = m_literals.emplace(std::make_pair(_value, SSACFG::ValueId{m_valueInfos.size()}));
+		auto [it, inserted] = m_literals.emplace(std::make_pair(_value, ValueId{m_valueInfos.size()}));
 		if (inserted)
 			m_valueInfos.emplace_back(LiteralValue{_debugData, _value});
 		else
@@ -213,20 +214,14 @@ private:
 	std::map<u256, ValueId> m_literals;
 	std::optional<ValueId> m_unreachableValue;
 public:
-	// TODO: the interface for function infos and functions here still sucks.
-	// Maybe we should split the graphs entirely and just have one SSACFG per function instead.
-	struct FunctionInfo {
-		langutil::DebugData::ConstPtr debugData;
-		std::reference_wrapper<Scope::Function const> function;
-		BlockId entry;
-		std::set<BlockId> exits;
-		bool canContinue = true;
-		std::vector<std::tuple<std::reference_wrapper<Scope::Variable const>, ValueId>> arguments;
-		std::vector<std::reference_wrapper<Scope::Variable const>> returns;
-	};
+	langutil::DebugData::ConstPtr debugData;
+	BlockId entry = BlockId{0};
+	std::set<BlockId> exits;
+	Scope::Function const* function = nullptr;
+	bool canContinue = true;
+	std::vector<std::tuple<std::reference_wrapper<Scope::Variable const>, ValueId>> arguments;
+	std::vector<std::reference_wrapper<Scope::Variable const>> returns;
 	std::vector<std::reference_wrapper<Scope::Function const>> functions;
-	std::map<Scope::Function const*, FunctionInfo> functionInfos;
-
 	// Container for artificial calls generated for switch statements.
 	std::list<yul::FunctionCall> ghostCalls;
 };

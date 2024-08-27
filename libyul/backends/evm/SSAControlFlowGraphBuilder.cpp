@@ -162,6 +162,7 @@ void SSAControlFlowGraphBuilder::buildFunctionGraphs(
 		cfg.canContinue = _sideEffects.functionSideEffects().at(functionDefinition).canContinue;
 		cfg.arguments = arguments;
 		cfg.returns = returns;
+		cfg.entry = cfg.makeBlock(debugDataOf(functionDefinition->body));
 
 		SSAControlFlowGraphBuilder builder(cfg, _info, _sideEffects.functionSideEffects(), _dialect);
 		builder.m_currentBlock = cfg.entry;

@@ -148,6 +148,7 @@ void SSAControlFlowGraphBuilder::buildFunctionGraphs(
 		Scope* virtualFunctionScope = _info.scopes.at(_info.virtualBlocks.at(functionDefinition).get()).get();
 		yulAssert(virtualFunctionScope, "");
 
+		cfg.entry = cfg.makeBlock(debugDataOf(functionDefinition->body));
 		auto arguments = functionDefinition->parameters | ranges::views::transform([&](auto const& _param) {
 			auto const& var = std::get<Scope::Variable>(virtualFunctionScope->identifiers.at(_param.name));
 			// Note: cannot use std::make_tuple since it unwraps reference wrappers.
@@ -162,7 +163,6 @@ void SSAControlFlowGraphBuilder::buildFunctionGraphs(
 		cfg.canContinue = _sideEffects.functionSideEffects().at(functionDefinition).canContinue;
 		cfg.arguments = arguments;
 		cfg.returns = returns;
-		cfg.entry = cfg.makeBlock(debugDataOf(functionDefinition->body));
 
 		SSAControlFlowGraphBuilder builder(cfg, _info, _sideEffects.functionSideEffects(), _dialect);
 		builder.m_currentBlock = cfg.entry;

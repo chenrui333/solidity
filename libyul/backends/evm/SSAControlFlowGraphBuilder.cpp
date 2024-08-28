@@ -102,12 +102,10 @@ namespace solidity::yul
 SSAControlFlowGraphBuilder::SSAControlFlowGraphBuilder(
 	SSACFG& _graph,
 	AsmAnalysisInfo const& _analysisInfo,
-	std::map<FunctionDefinition const*, ControlFlowSideEffects> const& _functionSideEffects,
 	Dialect const& _dialect
 ):
 	m_graph(_graph),
 	m_info(_analysisInfo),
-	m_functionSideEffects(_functionSideEffects),
 	m_dialect(_dialect)
 {
 }
@@ -121,7 +119,7 @@ std::unique_ptr<ControlFlow> SSAControlFlowGraphBuilder::build(
 	ControlFlowSideEffectsCollector sideEffects(_dialect, _block);
 
 	auto result = std::make_unique<ControlFlow>();
-	auto functions = buildMainGraph(*result->mainGraph, _analysisInfo, sideEffects, _dialect, _block);
+	auto functions = buildMainGraph(*result->mainGraph, _analysisInfo, _dialect, _block);
 	buildFunctionGraphs(*result, _analysisInfo, sideEffects, _dialect, functions);
 
 	cleanUnreachable(*result->mainGraph);
@@ -135,7 +133,7 @@ void SSAControlFlowGraphBuilder::buildFunctionGraphs(
 	AsmAnalysisInfo const& _info,
 	ControlFlowSideEffectsCollector const& _sideEffects,
 	Dialect const& _dialect,
-	std::vector<std::tuple<Scope::Function const*, FunctionDefinition const*>> _functions
+	std::vector<std::tuple<Scope::Function const*, FunctionDefinition const*>> const& _functions
 )
 {
 	for (auto const& [function, functionDefinition]: _functions)
@@ -164,7 +162,7 @@ void SSAControlFlowGraphBuilder::buildFunctionGraphs(
 		cfg.arguments = arguments;
 		cfg.returns = returns;
 
-		SSAControlFlowGraphBuilder builder(cfg, _info, _sideEffects.functionSideEffects(), _dialect);
+		SSAControlFlowGraphBuilder builder(cfg, _info, _dialect);
 		builder.m_currentBlock = cfg.entry;
 		for (auto&& [var, varId]: cfg.arguments)
 			builder.currentDef(var, cfg.entry) = varId;
@@ -179,12 +177,11 @@ void SSAControlFlowGraphBuilder::buildFunctionGraphs(
 std::vector<std::tuple<Scope::Function const*, FunctionDefinition const*>> SSAControlFlowGraphBuilder::buildMainGraph(
 	SSACFG& _cfg,
 	AsmAnalysisInfo const& _analysisInfo,
-	ControlFlowSideEffectsCollector const& _sideEffects,
 	Dialect const& _dialect,
 	Block const& _block
 )
 {
-	SSAControlFlowGraphBuilder builder(_cfg, _analysisInfo, _sideEffects.functionSideEffects(), _dialect);
+	SSAControlFlowGraphBuilder builder(_cfg, _analysisInfo, _dialect);
 	builder.m_currentBlock = _cfg.makeBlock(debugDataOf(_block));
 	builder.sealBlock(builder.m_currentBlock);
 	builder(_block);
@@ -223,7 +220,7 @@ void SSAControlFlowGraphBuilder::operator()(FunctionDefinition const& _functionD
 {
 	yulAssert(m_scope, "");
 	yulAssert(m_scope->identifiers.count(_functionDefinition.name), "");
-	Scope::Function& function = std::get<Scope::Function>(m_scope->identifiers.at(_functionDefinition.name));
+	auto& function = std::get<Scope::Function>(m_scope->identifiers.at(_functionDefinition.name));
 	m_graph.functions.emplace_back(function);
 	m_functionDefinitions.emplace_back(&function, &_functionDefinition);
 }
@@ -267,7 +264,7 @@ void SSAControlFlowGraphBuilder::operator()(Switch const& _switch)
 				cases[_case.value->value.value()] = blockId;
 			else
 				defaultCase = blockId;
-			children.emplace_back(std::make_tuple(blockId, std::ref(_case.body)));
+			children.emplace_back(blockId, std::ref(_case.body));
 		}
 		auto afterSwitch = m_graph.makeBlock(debugDataOf(currentBlock()));
 
@@ -285,9 +282,9 @@ void SSAControlFlowGraphBuilder::operator()(Switch const& _switch)
 	else
 	{
 		auto makeValueCompare = [&](Case const& _case) {
-			yul::FunctionCall const& ghostCall = m_graph.ghostCalls.emplace_back(yul::FunctionCall{
+			FunctionCall const& ghostCall = m_graph.ghostCalls.emplace_back(FunctionCall{
 				debugDataOf(_case),
-				yul::Identifier{{}, "eq"_yulname},
+				Identifier{{}, "eq"_yulname},
 				{*_case.value /* skip second argument */ }
 			});
 			auto outputValue = m_graph.newVariable(m_currentBlock);
@@ -340,7 +337,7 @@ void SSAControlFlowGraphBuilder::operator()(ForLoop const& _loop)
 	auto preLoopDebugData = debugDataOf(currentBlock());
 
 	std::optional<bool> constantCondition;
-	if (auto const* literalCondition = std::get_if<yul::Literal>(_loop.condition.get()))
+	if (auto const* literalCondition = std::get_if<Literal>(_loop.condition.get()))
 		constantCondition = literalCondition->value.value() != 0;
 
 	SSACFG::BlockId loopCondition = m_graph.makeBlock(debugDataOf(*_loop.condition));
@@ -513,8 +510,7 @@ SSACFG::ValueId SSAControlFlowGraphBuilder::zero()
 
 SSACFG::ValueId SSAControlFlowGraphBuilder::readVariable(Scope::Variable const& _variable, SSACFG::BlockId _block)
 {
-	auto& def = currentDef(_variable, _block);
-	if (def.has_value())
+	if (auto const& def = currentDef(_variable, _block))
 		return *def;
 	return readVariableRecursive(_variable, _block);
 }
@@ -536,7 +532,7 @@ SSACFG::ValueId SSAControlFlowGraphBuilder::readVariableRecursive(Scope::Variabl
 	}
 	else
 	{
-		info.incompletePhis.emplace_back(std::make_tuple(phi, std::ref(_variable)));
+		info.incompletePhis.emplace_back(phi, std::ref(_variable));
 	}
 	writeVariable(_variable, _block, phi);
 	return phi;
@@ -544,25 +540,25 @@ SSACFG::ValueId SSAControlFlowGraphBuilder::readVariableRecursive(Scope::Variabl
 
 SSACFG::ValueId SSAControlFlowGraphBuilder::addPhiOperands(Scope::Variable const& _variable, SSACFG::ValueId _phi)
 {
-	auto* phi = std::get_if<SSACFG::PhiValue>(&m_graph.valueInfo(_phi));
-	yulAssert(phi);
-	for (auto pred: m_graph.block(phi->block).entries)
-		phi->arguments.emplace_back(readVariable(_variable, pred));
+	yulAssert(std::holds_alternative<SSACFG::PhiValue>(m_graph.valueInfo(_phi)));
+	auto& phi = std::get<SSACFG::PhiValue>(m_graph.valueInfo(_phi));
+	for (auto pred: m_graph.block(phi.block).entries)
+		phi.arguments.emplace_back(readVariable(_variable, pred));
 	return tryRemoveTrivialPhi(_phi);
 }
 
 SSACFG::ValueId SSAControlFlowGraphBuilder::tryRemoveTrivialPhi(SSACFG::ValueId _phi)
 {
 	// TODO: double-check if this is sane
-	auto* phiInfo = std::get_if<SSACFG::PhiValue>(&m_graph.valueInfo(_phi));
-	yulAssert(phiInfo);
+	yulAssert(std::holds_alternative<SSACFG::PhiValue>(m_graph.valueInfo(_phi)));
+	auto& phiInfo = std::get<SSACFG::PhiValue>(m_graph.valueInfo(_phi));
 
 	SSACFG::ValueId same;
-	for (SSACFG::ValueId arg: phiInfo->arguments)
+	for (SSACFG::ValueId arg: phiInfo.arguments)
 	{
 		if (arg == same || arg == _phi)
 			continue;
-		if (same)
+		if (same.hasValue())
 			return _phi;
 		same = arg;
 	}
@@ -623,11 +619,11 @@ SSACFG::ValueId SSAControlFlowGraphBuilder::tryRemoveTrivialPhi(SSACFG::ValueId 
 			_recurse(_block, _recurse);
 		});
 	};
-	auto phiBlock = phiInfo->block;
+	auto phiBlock = phiInfo.block;
 	m_graph.block(phiBlock).phis.erase(_phi);
 	findUses(phiBlock, findUses);
 
-	if (!same)
+	if (!same.hasValue())
 		// This will happen for unreachable paths.
 		// TODO: check how best to deal with this
 		same = m_graph.unreachableValue();

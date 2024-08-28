@@ -34,7 +34,6 @@ class SSAControlFlowGraphBuilder
 	SSAControlFlowGraphBuilder(
 		SSACFG& _graph,
 		AsmAnalysisInfo const& _analysisInfo,
-		std::map<FunctionDefinition const*, ControlFlowSideEffects> const& _functionSideEffects,
 		Dialect const& _dialect
 	);
 public:
@@ -46,12 +45,11 @@ public:
 		AsmAnalysisInfo const& _info,
 		ControlFlowSideEffectsCollector const& _sideEffects,
 		Dialect const& _dialect,
-		std::vector<std::tuple<Scope::Function const*, FunctionDefinition const*>> _functions
+		std::vector<std::tuple<Scope::Function const*, FunctionDefinition const*>> const& _functions
 	);
 	static std::vector<std::tuple<Scope::Function const*, FunctionDefinition const*>> buildMainGraph(
 		SSACFG& _cfg,
 		AsmAnalysisInfo const& _analysisInfo,
-		ControlFlowSideEffectsCollector const& _sideEffects,
 		Dialect const& _dialect,
 		Block const& _block
 	);
@@ -87,7 +85,6 @@ private:
 
 	SSACFG& m_graph;
 	AsmAnalysisInfo const& m_info;
-	std::map<FunctionDefinition const*, ControlFlowSideEffects> const& m_functionSideEffects;
 	Dialect const& m_dialect;
 	SSACFG::BlockId m_currentBlock;
 	SSACFG::BasicBlock& currentBlock() { return m_graph.block(m_currentBlock); }

@@ -58,7 +58,7 @@ public:
 	struct ValueId
 	{
 		size_t value = std::numeric_limits<size_t>::max();
-		operator bool() const { return value != std::numeric_limits<size_t>::max(); }
+		bool hasValue() const { return value != std::numeric_limits<size_t>::max(); }
 		bool operator<(ValueId const& _rhs) const { return value < _rhs.value; }
 		bool operator==(ValueId const& _rhs) const { return value == _rhs.value; }
 		bool operator!=(ValueId const& _rhs) const { return value != _rhs.value; }
@@ -104,7 +104,6 @@ public:
 			ValueId value;
 			std::map<u256, BlockId> cases;
 			BlockId defaultCase;
-
 		};
 		struct FunctionReturn
 		{
@@ -162,24 +161,22 @@ public:
 	};
 	struct UnreachableValue {};
 	using ValueInfo = std::variant<UnreachableValue, VariableValue, LiteralValue, PhiValue>;
-	ValueInfo& valueInfo(ValueId _var)
+	ValueInfo& valueInfo(ValueId const _var)
 	{
-		yulAssert(_var.value < m_valueInfos.size());
 		return m_valueInfos.at(_var.value);
 	}
-	ValueInfo const& valueInfo(ValueId _var) const
+	ValueInfo const& valueInfo(ValueId const _var) const
 	{
-		yulAssert(_var.value < m_valueInfos.size());
 		return m_valueInfos.at(_var.value);
 	}
-	ValueId newPhi(BlockId _definingBlock)
+	ValueId newPhi(BlockId const _definingBlock)
 	{
 		ValueId id { m_valueInfos.size() };
 		auto block = m_blocks.at(_definingBlock.value);
 		m_valueInfos.emplace_back(PhiValue{debugDataOf(block), _definingBlock, {}});
 		return id;
 	}
-	ValueId newVariable(BlockId _definingBlock)
+	ValueId newVariable(BlockId const _definingBlock)
 	{
 		ValueId id { m_valueInfos.size() };
 		auto block = m_blocks.at(_definingBlock.value);
@@ -197,9 +194,9 @@ public:
 	}
 	ValueId newLiteral(langutil::DebugData::ConstPtr _debugData, u256 _value)
 	{
-		auto [it, inserted] = m_literals.emplace(std::make_pair(_value, ValueId{m_valueInfos.size()}));
+		auto [it, inserted] = m_literals.emplace(_value, ValueId{m_valueInfos.size()});
 		if (inserted)
-			m_valueInfos.emplace_back(LiteralValue{_debugData, _value});
+			m_valueInfos.emplace_back(LiteralValue{std::move(_debugData), _value});
 		else
 		{
 			yulAssert(_value == it->first);
@@ -223,7 +220,7 @@ public:
 	std::vector<std::reference_wrapper<Scope::Variable const>> returns;
 	std::vector<std::reference_wrapper<Scope::Function const>> functions;
 	// Container for artificial calls generated for switch statements.
-	std::list<yul::FunctionCall> ghostCalls;
+	std::list<FunctionCall> ghostCalls;
 };
 
 }

@@ -29,7 +29,7 @@ annotation, the "data location", about where it is stored. There are three data 
 non-persistent area where function arguments are stored, and behaves mostly like memory.
 
 .. note::
-    ``transient storage`` is not yet supported as a data location for reference types.
+    ``transient`` is not yet supported as a data location for reference types.
 
 .. note::
     If you can, try to use ``calldata`` as data location because it will avoid copies and
